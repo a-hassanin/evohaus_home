@@ -1,6 +1,7 @@
-#  evohaus
-Senor for evohaus electricity and water consumption
-# install
+#  Evohaus
+Sensor to fetch all meter data for an apartment managed by evohaus
+
+# Installation Steps
 
 install with following steps:
 
