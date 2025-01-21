@@ -1,4 +1,3 @@
-import logging
 import homeassistant
 
 from homeassistant.const import (
@@ -25,18 +24,17 @@ import json
 import requests
 import voluptuous as vol
 
+from .const import DOMAIN, LOGGER
+
 THROTTLE_INTERVAL_SECONDS = 100
 SCAN_INTERVAL = timedelta(minutes=15)
 THROTTLE_INTERVAL = timedelta(seconds=THROTTLE_INTERVAL_SECONDS)
-DEFAULT_NAME = "evohaus_home"
-
-_LOGGER = logging.getLogger(__name__)
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     {
         vol.Required(CONF_USERNAME): cv.string,
         vol.Required(CONF_PASSWORD): cv.string,
-        vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
+        vol.Optional(CONF_NAME, default=DOMAIN): cv.string,
         vol.Optional(CONF_SCAN_INTERVAL, default=SCAN_INTERVAL): cv.time_period,
     }
 )
@@ -111,7 +109,7 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
     password = config.get(CONF_PASSWORD)
     name = config.get(CONF_NAME)
 
-    _LOGGER.info("Initializing Evohaus ...)")
+    LOGGER.info("Initializing Evohaus ...)")
 
     devices = []
     try:
@@ -127,7 +125,7 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
         devices.append(WarmWaterKitchenMeterSensor(evohaus))
 
     except HomeAssistantError:
-        _LOGGER.exception("Fail to setup Evohaus")
+        LOGGER.exception("Fail to setup Evohaus")
         raise PlatformNotReady
 
     add_devices(devices)
@@ -148,7 +146,7 @@ class Evohaus:
         self.hass = hass
 
     def __login(self):
-        _LOGGER.debug("Start login....")
+        LOGGER.debug("Start login....")
         payload = {"user": self._user, "passwort": self._password}
         url = self._domain + "signinForm.php?mode=ok"
         with requests.Session() as s:
@@ -156,9 +154,9 @@ class Evohaus:
             self._cookie = {"PHPSESSID": r.cookies["PHPSESSID"]}
             s.post(url, data=payload, cookies=self._cookie)
         if self._cookie is None:
-            _LOGGER.error("Cannot login")
+            LOGGER.error("Cannot login")
         else:
-            _LOGGER.debug("Login successful")
+            LOGGER.debug("Login successful")
 
     def _get_residence(self):
         url = self._domain + "/php/ownConsumption.php"
@@ -183,9 +181,9 @@ class Evohaus:
                     r = s.post(url, data=payload, cookies=self._cookie)
                 self.cache["meter_data"] = BeautifulSoup(r.content, "html.parser")
             if self._cookie is None:
-                _LOGGER.error("Cannot fetch meter data")
+                LOGGER.error("Cannot fetch meter data")
             else:
-                _LOGGER.debug(self._meter_data)
+                LOGGER.debug(self._meter_data)
         self._meter_data = self.cache["meter_data"]
 
     def fetch_meter_data(self, meterType):
@@ -193,7 +191,7 @@ class Evohaus:
         row = {"state": 0, "meter_no": ""}
 
         for raw_row in rows:
-            _LOGGER.debug("row content: " + str(raw_row))
+            LOGGER.debug("row content: " + str(raw_row))
             cols = raw_row.find_all("td")
             if not cols:
                 continue
@@ -217,9 +215,9 @@ class Evohaus:
             r = s.get(url, cookies=self._cookie)
             trafficRaw = json.loads(r.content)
         if self._cookie is None:
-            _LOGGER.error("Cannot fetch traffic data")
+            LOGGER.error("Cannot fetch traffic data")
         else:
-            _LOGGER.debug(trafficRaw)
+            LOGGER.debug(trafficRaw)
         return trafficRaw
 
     def fetch_chart_data(self, dataType):
@@ -240,9 +238,9 @@ class Evohaus:
             r = s.get(url, cookies=self._cookie)
             data = json.loads(r.content)
         if data is None or len(data[0]) == 0:
-            _LOGGER.error("Cannot fetch data: " + url)
+            LOGGER.error("Cannot fetch data: " + url)
         else:
-            _LOGGER.debug(data)
+            LOGGER.debug(data)
         return data
 
 
