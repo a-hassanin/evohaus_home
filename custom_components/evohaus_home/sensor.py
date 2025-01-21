@@ -28,7 +28,7 @@ import voluptuous as vol
 THROTTLE_INTERVAL_SECONDS = 100
 SCAN_INTERVAL = timedelta(minutes=15)
 THROTTLE_INTERVAL = timedelta(seconds=THROTTLE_INTERVAL_SECONDS)
-DEFAULT_NAME = "evohaus"
+DEFAULT_NAME = "evohaus_home"
 
 _LOGGER = logging.getLogger(__name__)
 
