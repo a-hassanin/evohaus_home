@@ -1,17 +1,6 @@
 import logging
 import homeassistant
 
-import homeassistant.helpers.config_validation as cv
-import voluptuous as vol
-from homeassistant.const import STATE_UNKNOWN
-
-from homeassistant.components.sensor import (
-    PLATFORM_SCHEMA,
-    STATE_CLASS_MEASUREMENT,
-    STATE_CLASS_TOTAL_INCREASING,
-    STATE_CLASS_TOTAL,
-)
-
 from homeassistant.const import (
     CONF_NAME,
     CONF_SCAN_INTERVAL,
@@ -21,29 +10,27 @@ from homeassistant.const import (
     CURRENCY_CENT,
     UnitOfEnergy,
     UnitOfVolume,
+    STATE_UNKNOWN
 )
-from homeassistant.components.sensor import SensorEntity, SensorDeviceClass
 
-from homeassistant.exceptions import PlatformNotReady
+from homeassistant.components.sensor import SensorEntity, SensorDeviceClass, SensorStateClass, PLATFORM_SCHEMA
+from homeassistant.exceptions import PlatformNotReady, HomeAssistantError
 from homeassistant.util import Throttle
-from homeassistant.exceptions import HomeAssistantError
+import homeassistant.helpers.config_validation as cv
 
-_LOGGER = logging.getLogger(__name__)
-import requests
-import json
-
-from datetime import timedelta
 from bs4 import BeautifulSoup
 from cachetools import TTLCache
+from datetime import timedelta
+import json
+import requests
+import voluptuous as vol
 
 THROTTLE_INTERVAL_SECONDS = 100
-ELECTRICITY_PRICE_FIXED = 0.0652
-
 SCAN_INTERVAL = timedelta(minutes=15)
 THROTTLE_INTERVAL = timedelta(seconds=THROTTLE_INTERVAL_SECONDS)
-
 DEFAULT_NAME = "evohaus"
-ATTR_UPDATA_TIME = "lastUpdateTime"
+
+_LOGGER = logging.getLogger(__name__)
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     {
@@ -60,7 +47,7 @@ WARM_WATER_KITCHEN_METER = {
     "unit": UnitOfVolume.CUBIC_METERS,
     "description": "Verbrauch Warmwasser Küche",
     "device_class": SensorDeviceClass.WATER,
-    "state_class": STATE_CLASS_TOTAL_INCREASING,
+    "state_class": SensorStateClass.TOTAL_INCREASING,
 }
 WARM_WATER_BATH_METER = {
     "name": "warm_water_bathroom_meter",
@@ -68,7 +55,7 @@ WARM_WATER_BATH_METER = {
     "unit": UnitOfVolume.CUBIC_METERS,
     "description": "Verbrauch Warmwasser Bad",
     "device_class": SensorDeviceClass.WATER,
-    "state_class": STATE_CLASS_TOTAL_INCREASING,
+    "state_class": SensorStateClass.TOTAL_INCREASING,
 }
 COLD_WATER_BATH_METER = {
     "name": "cold_water_bathroom_meter",
@@ -76,7 +63,7 @@ COLD_WATER_BATH_METER = {
     "unit": UnitOfVolume.CUBIC_METERS,
     "description": "Verbrauch Kaltwasser Bad",
     "device_class": SensorDeviceClass.WATER,
-    "state_class": STATE_CLASS_TOTAL_INCREASING,
+    "state_class": SensorStateClass.TOTAL_INCREASING,
 }
 COLD_WATER_KITCHEN_METER = {
     "name": "cold_water_kitchen_meter",
@@ -84,7 +71,7 @@ COLD_WATER_KITCHEN_METER = {
     "unit": UnitOfVolume.CUBIC_METERS,
     "description": "Verbrauch Kaltwasser Küche",
     "device_class": SensorDeviceClass.WATER,
-    "state_class": STATE_CLASS_TOTAL_INCREASING,
+    "state_class": SensorStateClass.TOTAL_INCREASING,
 }
 COLD_WATER_WASH_METER = {
     "name": "cold_water_wash_meter",
@@ -92,7 +79,7 @@ COLD_WATER_WASH_METER = {
     "unit": UnitOfVolume.CUBIC_METERS,
     "description": "Verbrauch Kaltwasser Waschmaschine",
     "device_class": SensorDeviceClass.WATER,
-    "state_class": STATE_CLASS_TOTAL_INCREASING,
+    "state_class": SensorStateClass.TOTAL_INCREASING,
 }
 ELECTRIC_METER = {
     "name": "electricity_meter",
@@ -100,39 +87,7 @@ ELECTRIC_METER = {
     "unit": UnitOfEnergy.KILO_WATT_HOUR,
     "description": "Verbrauch Strom",
     "device_class": SensorDeviceClass.ENERGY,
-    "state_class": STATE_CLASS_TOTAL_INCREASING,
-}
-ELECTRIC_CONSUMPTION = {
-    "name": "electricity_consumption",
-    "icon": "mdi:solar-power",
-    "unit": UnitOfEnergy.KILO_WATT_HOUR,
-    "query": "Stromverbrauch",
-    "device_class": SensorDeviceClass.ENERGY,
-    "state_class": STATE_CLASS_TOTAL,
-}
-TOTAL_ELECTRIC_CONSUMPTION = {
-    "name": "total_electricity_consumption",
-    "icon": "mdi:solar-power",
-    "unit": UnitOfEnergy.KILO_WATT_HOUR,
-    "query": "Stromverbrauch",
-    "device_class": SensorDeviceClass.ENERGY,
-    "state_class": STATE_CLASS_TOTAL_INCREASING,
-}
-COLD_WATER_CONSUMPTION = {
-    "name": "cold_water_consumption",
-    "icon": "mdi:water",
-    "unit": UnitOfVolume.CUBIC_METERS,
-    "query": "Kaltwasser",
-    "device_class": SensorDeviceClass.WATER,
-    "state_class": STATE_CLASS_TOTAL,
-}
-WARM_WATER_CONSUMPTION = {
-    "name": "warm_water_consumption",
-    "icon": "mdi:shower-head",
-    "unit": UnitOfVolume.CUBIC_METERS,
-    "query": "Warmwasser",
-    "device_class": SensorDeviceClass.WATER,
-    "state_class": STATE_CLASS_TOTAL,
+    "state_class": SensorStateClass.TOTAL_INCREASING,
 }
 ELECTRIC_PRICE = {
     "name": "electricity_price",
@@ -151,8 +106,6 @@ ELECTRIC_PRICE_EURO = {
     "state_class": None,
 }
 
-
-
 def setup_platform(hass, config, add_devices, discovery_info=None):
     user = config.get(CONF_USERNAME)
     password = config.get(CONF_PASSWORD)
@@ -163,12 +116,9 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
     devices = []
     try:
         evohaus = Evohaus(user, password, hass)
-        devices.append(ElectricConsumptionSensor(evohaus))
-        devices.append(ElectricTotalConsumptionSensor(evohaus))
-        devices.append(ColdWaterSensor(evohaus))
-        devices.append(WarmWaterSensor(evohaus))
         devices.append(TrafficLightSensor(evohaus))
         devices.append(ElectricityPriceSensor(evohaus))
+        devices.append(ElectricityPriceEuroSensor(evohaus))
         devices.append(ElectricityMeterSensor(evohaus))
         devices.append(ColdWaterBathMeterSensor(evohaus))
         devices.append(ColdWaterWashMeterSensor(evohaus))
@@ -378,164 +328,31 @@ class MeterSensor(EvoSensor):
         self._meter_no = meter_data["meter_no"]
         self._updateTime = homeassistant.util.dt.now().strftime("%H:%M")
 
-
 class ColdWaterBathMeterSensor(MeterSensor):
     def __init__(self, evohaus):
         super().__init__(evohaus, COLD_WATER_BATH_METER)
-
 
 class ColdWaterKitchenMeterSensor(MeterSensor):
     def __init__(self, evohaus):
         super().__init__(evohaus, COLD_WATER_KITCHEN_METER)
 
-
 class ColdWaterWashMeterSensor(MeterSensor):
     def __init__(self, evohaus):
         super().__init__(evohaus, COLD_WATER_WASH_METER)
-
 
 class ElectricityMeterSensor(MeterSensor):
     def __init__(self, evohaus):
         super().__init__(evohaus, ELECTRIC_METER)
 
-
 class WarmWaterBathMeterSensor(MeterSensor):
     def __init__(self, evohaus):
         super().__init__(evohaus, WARM_WATER_BATH_METER)
-
 
 class WarmWaterKitchenMeterSensor(MeterSensor):
     def __init__(self, evohaus):
         super().__init__(evohaus, WARM_WATER_KITCHEN_METER)
 
-class ElectricTotalConsumptionSensor(EvoSensor):
-    def __init__(self, evohaus):
-        super().__init__(evohaus, TOTAL_ELECTRIC_CONSUMPTION)
-        
-    @property
-    def extra_state_attributes(self):
-        """Return the state attributes of the last update."""
-        attrs = super().extra_state_attributes
-        attrs["total_cost_today"] = self._total_cost
-        return attrs
-
-    def parse_data(self):
-        electric_data = self._evohaus.fetch_chart_data(self._config["query"])
-        self._state = 0
-        self._total_cost = 0
-        
-        for i in range(len(electric_data[1])):
-            if i % 4 == 0:
-                minute = "00"
-            else:
-                minute = str(int(i % 4 * 15))
-            
-            if electric_data[0][i] != None:
-                self._state += electric_data[0][i]
-                self._total_cost += electric_data[0][i] * (electric_data[2][i] + ELECTRICITY_PRICE_FIXED)
-                self._updateTime = str(electric_data[1][i]) + ":" + minute
-        
-class ElectricConsumptionSensor(EvoSensor):
-    def __init__(self, evohaus):
-        super().__init__(evohaus, ELECTRIC_CONSUMPTION)
-        
-    @property
-    def extra_state_attributes(self):
-        """Return the state attributes of the last update."""
-        attrs = super().extra_state_attributes
-        return attrs
-
-    def parse_data(self):
-        electric_data = self._evohaus.fetch_chart_data(self._config["query"])
-        self._state = 0
-        
-        for i in range(len(electric_data[1])):
-            if i % 4 == 0:
-                minute = "00"
-            else:
-                minute = str(int(i % 4 * 15))
-            
-            self._state = 0
-            
-            if electric_data[0][i] != None and i % 4 == 0 and i > 0:
-                self._state = electric_data[0][i-1] + electric_data[0][i-2] + electric_data[0][i-3] + electric_data[0][i-4]
-                self._updateTime = str(electric_data[1][i]) + ":" + minute
-
-
-class ColdWaterSensor(EvoSensor):
-    def __init__(self, evohaus):
-        super().__init__(evohaus, COLD_WATER_CONSUMPTION)
-        
-    @property
-    def extra_state_attributes(self):
-        """Return the state attributes of the last update."""
-        attrs = super().extra_state_attributes
-        attrs["total_consumption_today"] = self._total
-        attrs["current_consumption"] = self._current_consumption
-        return attrs
-
-    def parse_data(self):
-        water_data = self._evohaus.fetch_chart_data(self._config["query"])
-        self._state = 0
-        self._current_consumption = 0
-        self._total = 0
-        
-        for i in range(len(water_data[1])):
-            if i % 4 == 0:
-                minute = "00"
-            else:
-                minute = str(int(i % 4 * 15))
-                
-            update_string = str(water_data[1][i]) + ":" + minute
-            self._current_consumption = 0
-            
-            if water_data[0][i] != None:
-                self._total += water_data[0][i]
-                self._updateTime = update_string
-                
-                if i % 4 == 0 and i > 0:
-                  self._current_consumption = water_data[0][i-1] + water_data[0][i-2] + water_data[0][i-3] + water_data[0][i-4]
-                
-        self._state = self._current_consumption
-
-
-class WarmWaterSensor(EvoSensor):
-    def __init__(self, evohaus):
-        super().__init__(evohaus, WARM_WATER_CONSUMPTION)
-
-    @property
-    def extra_state_attributes(self):
-        """Return the state attributes of the last update."""
-        attrs = super().extra_state_attributes
-        attrs["total_consumption_today"] = self._total
-        attrs["current_consumption"] = self._current_consumption
-        return attrs
-
-    def parse_data(self):
-        water_data = self._evohaus.fetch_chart_data(self._config["query"])
-        self._state = 0
-        self._current_consumption = 0
-        self._total = 0
-        
-        for i in range(len(water_data[1])):
-            if i % 4 == 0:
-                minute = "00"
-            else:
-                minute = str(int(i % 4 * 15))
-                
-            update_string = str(water_data[1][i]) + ":" + minute
-            self._current_consumption = 0
-            
-            if water_data[0][i] != None:
-                self._total += water_data[0][i]
-                self._updateTime = update_string
-                
-                if i % 4 == 0 and i > 0:
-                  self._current_consumption = water_data[0][i-1] + water_data[0][i-2] + water_data[0][i-3] + water_data[0][i-4]
-                
-        self._state = self._current_consumption
-
-class ElectricityPriceSensor(EvoSensor):
+class ElectricityPriceEuroSensor(EvoSensor):
     def __init__(self, evohaus):
         super().__init__(evohaus, ELECTRIC_PRICE_EURO)
         
@@ -543,7 +360,24 @@ class ElectricityPriceSensor(EvoSensor):
         self._updateTime = homeassistant.util.dt.now().strftime("%H:%M")
         raw_data = self._evohaus.fetch_traffic_data()
         self._traffic_light = raw_data["color"]
-        self._state = round((raw_data["currentEnergyprice"] + ELECTRICITY_PRICE_FIXED)/100, 2)
+        self._state = round(raw_data["currentEnergyprice"]/100, 2)
+
+    @property
+    def extra_state_attributes(self):
+        """Return the state attributes of the last update."""
+        attrs = super().extra_state_attributes
+        attrs["traffic_light"] = self._traffic_light
+        return attrs
+
+class ElectricityPriceSensor(EvoSensor):
+    def __init__(self, evohaus):
+        super().__init__(evohaus, ELECTRIC_PRICE)
+
+    def parse_data(self):
+        self._updateTime = homeassistant.util.dt.now().strftime("%H:%M")
+        raw_data = self._evohaus.fetch_traffic_data()
+        self._traffic_light = raw_data["color"]
+        self._state = round(raw_data["currentEnergyprice"], 2)
 
     @property
     def extra_state_attributes(self):
@@ -559,12 +393,12 @@ class TrafficLightSensor(EvoSensor):
     def parse_data(self):
         self._updateTime = homeassistant.util.dt.now().strftime("%H:%M")
         raw_data = self._evohaus.fetch_traffic_data()
-        self._traffic_light = raw_data["color"]
-        self._state = round(raw_data["currentEnergyprice"] + ELECTRICITY_PRICE_FIXED, 2)
+        self._state = raw_data["color"]
+        self._price = round(raw_data["currentEnergyprice"], 2)
 
     @property
     def extra_state_attributes(self):
         """Return the state attributes of the last update."""
         attrs = super().extra_state_attributes
-        attrs["traffic_light"] = self._traffic_light
+        attrs["price"] = self._price
         return attrs
