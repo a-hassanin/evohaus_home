@@ -1,44 +1,47 @@
+"""The Evohaus component."""
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.const import Platform
+from homeassistant.exceptions import ConfigEntryNotReady
 
-from .const import DOMAIN, LOGGER
-from .config_flow import EvohausFlowHandler
-from .options_flow import EvohausOptionsFlowHandler
-
-PLATFORMS: list[Platform] = [
-    Platform.SENSOR
-]
+from .const import DOMAIN
+from .coordinator import EvohausDataUpdateCoordinator
 
 async def async_setup(hass: HomeAssistant, config: dict):
-    """Set up the Evohaus component from a configuration.yaml entry."""
-    # Use this if your component can be configured via configuration.yaml
-    hass.data.setdefault(DOMAIN, {})
+    """Set up the Evohaus component."""
     return True
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Set up Evohaus from a config entry."""
-    # Store an instance of your component's central class
-    # for access throughout the integration
-    hass.data[DOMAIN][entry.entry_id] = {"username": entry.data.get("username")}
+    hass.data.setdefault(DOMAIN, {})
 
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+    username = entry.data.get("username")
+    password = entry.data.get("password")
+
+    coordinator = EvohausDataUpdateCoordinator(hass, username, password)
+
+    try:
+        await coordinator.async_login()
+        await coordinator.async_get_residence()
+        await coordinator.async_refresh()
+
+        if not coordinator.last_update_success:
+            raise ConfigEntryNotReady
+    except Exception as e:
+        raise ConfigEntryNotReady from e
+
+    # Store the coordinator so platforms can access it
+    hass.data[DOMAIN][entry.entry_id] = coordinator
+
+    hass.async_create_task(
+        hass.config_entries.async_forward_entry_setup(entry, "sensor")
+    )
+
     return True
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Unload a config entry."""
-    hass.data[DOMAIN].pop(entry.entry_id)
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unload_ok = await hass.config_entries.async_forward_entry_unload(entry, "sensor")
+    if unload_ok:
+        hass.data[DOMAIN].pop(entry.entry_id)
 
-async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry):
-    """Remove a config entry."""
-    await async_unload_entry(hass, entry)
-
-async def async_reload_entry(
-        hass: HomeAssistant,
-        entry: ConfigEntry,
-) -> None:
-    """Reload config entry."""
-    await async_unload_entry(hass, entry)
-    await async_setup_entry(hass, entry)
+    return unload_ok
