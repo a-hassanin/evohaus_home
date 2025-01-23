@@ -1,13 +1,17 @@
 {
   "domain": "evohaus_home",
-  "name": "evohaus_home",
+  "name": "Evohaus Home",
   "version": "0.1.0",
   "documentation": "https://github.com/a-hassanin/evohaus_home",
   "issue_tacker": "https://github.com/a-hassanin/evohaus_home/issues",
   "codeowners": ["@a-hassain"],
-  "integration_type": "device",
   "iot_class": "cloud_polling",
   "config_flow": true,
-  "requirements": ["voluptuous", "homeassistant", "python-slugify"],
+  "requirements": [
+    "beautifulsoup4",
+    "cachetools",
+    "requests",
+    "voluptuous"
+  ],
   "dependencies": []
 }
