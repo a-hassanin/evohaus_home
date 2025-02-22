@@ -1,8 +1,15 @@
 """Platform for sensor integration."""
 import homeassistant
-from homeassistant.components.sensor import SensorEntity, SensorStateClass
+from homeassistant.components.sensor import SensorEntity, SensorStateClass, SensorDeviceClass
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 from homeassistant.helpers.entity import DeviceInfo
+
+from homeassistant.const import (
+    CURRENCY_EURO,
+    CURRENCY_CENT,
+    UnitOfEnergy,
+    UnitOfVolume
+)
 
 from .const import DOMAIN
 
@@ -11,7 +18,6 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     coordinator = hass.data[DOMAIN][config_entry.entry_id]
 
     sensors = [
-        TrafficLightSensor(coordinator),
         ElectricityPriceSensor(coordinator),
         ElectricityPriceEuroSensor(coordinator),
         ElectricityMeterSensor(coordinator),
@@ -28,23 +34,39 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 class EvoSensor(CoordinatorEntity, SensorEntity):
     """Representation of a Evo Sensor."""
 
-    def __init__(self, coordinator, name, icon):
+    def __init__(self, coordinator, name, icon, tech_name="", unit=None, device_class=None, state_class=None):
         """Initialize the sensor."""
         super().__init__(coordinator)
+        self._attr_tech_name = tech_name
         self._attr_name = name
         self._attr_icon = icon
+        self._attr_unit = unit
+        self._attr_device_class = device_class
+        self._attr_state_class = state_class
         self._attr_native_value = None
         self._attr_extra_state_attributes = {}
 
     @property
     def native_value(self):
-        """Return the state of the device."""
-        return self.coordinator.data.get("state")
+        return self._attr_native_value
+
+    @property
+    def native_unit_of_measurement(self):
+        return self._attr_unit
 
     @property
     def extra_state_attributes(self):
-        """Return the state attributes of the device."""
+        self._attr_extra_state_attributes["updateTime"] = homeassistant.util.dt.now().strftime("%H:%M")
         return self._attr_extra_state_attributes
+
+    @property
+    def device_class(self):
+        """Device class of this entity."""
+        return self._attr_device_class
+
+    @property
+    def state_class(self):
+        return self._attr_state_class
 
     @property
     def device_info(self):
@@ -56,24 +78,17 @@ class EvoSensor(CoordinatorEntity, SensorEntity):
         )
 
 class MeterSensor(EvoSensor):
-    """Meter Sensor specific implementation."""
-
-    def __init__(self, coordinator, name, icon):
-        super().__init__(coordinator, name, icon)
-        self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+    def __init__(self, coordinator, name, icon, tech_name, unit, device_class):
+        super().__init__(coordinator, name, icon, tech_name, unit, device_class, SensorStateClass.TOTAL_INCREASING)
 
     async def async_update(self):
         """Get the latest data and update the state."""
         await super().async_update()
         meter_data = await self.coordinator.fetch_meter_data()
-        new_state = self.extract_meter_data(meter_data, self._attr_name)
-        try:
-            if float(new_state['state']) >= float(self._attr_native_value):
-                self._attr_native_value = new_state['state']
-        except ValueError:  # if history state does not exist
-            self._attr_native_value = new_state['state']
-        self._attr_extra_state_attributes["meter_no"] = new_state['meter_no']
-        self._attr_extra_state_attributes["updateTime"] = homeassistant.util.dt.now().strftime("%H:%M")
+        meter_data_extracted = self.extract_meter_data(meter_data, self._attr_tech_name)
+
+        self._attr_native_value = meter_data_extracted['state']
+        self._attr_extra_state_attributes["meter_no"] = meter_data_extracted['meter_no']
 
     def extract_meter_data(self, meterData, meterType):
         rows = meterData.find_all("tr")
@@ -97,84 +112,72 @@ class MeterSensor(EvoSensor):
 
         return row
 
-
-class TrafficLightSensor(EvoSensor):
-    """Traffic Light Sensor specific implementation."""
-
-    def __init__(self, coordinator):
-        super().__init__(coordinator, "Traffic Light", "mdi:traffic-light")
+class WaterMeterSensor(MeterSensor):
+    def __init__(self, coordinator, name, icon, tech_name):
+        super().__init__(coordinator, name, icon, tech_name, UnitOfVolume.CUBIC_METERS, SensorDeviceClass.WATER)
 
     async def async_update(self):
-        """Get the latest data and update the state."""
         await super().async_update()
-        self._attr_native_value = 'test'
-        self._attr_extra_state_attributes["price"] = round(
-            50, 2
-        )
 
+class EnergyMeterSensor(MeterSensor):
+    def __init__(self, coordinator, name, icon, tech_name):
+        super().__init__(coordinator, name, icon, tech_name, UnitOfEnergy.KILO_WATT_HOUR, SensorDeviceClass.ENERGY)
+
+    async def async_update(self):
+        await super().async_update()
 
 class ElectricityPriceSensor(EvoSensor):
-    """Electricity Price Sensor specific implementation."""
-
     def __init__(self, coordinator):
-        super().__init__(coordinator, "Electricity Price", "mdi:currency-eur")
+        super().__init__(coordinator, "Electricity Price", "mdi:currency-eur", "", f"{CURRENCY_CENT}/{UnitOfEnergy.KILO_WATT_HOUR}", SensorDeviceClass.MONETARY)
 
     async def async_update(self):
         """Get the latest data and update the state."""
         await super().async_update()
-        self._attr_native_value = round(50, 2)
-        self._attr_extra_state_attributes["traffic_light"] = 'test'
-
+        traffic_data = await self.coordinator.fetch_traffic_data()
+        self._attr_native_value = round(traffic_data["currentEnergyprice"], 2)
+        self._attr_extra_state_attributes["traffic_light"] = traffic_data["color"]
 
 class ElectricityPriceEuroSensor(EvoSensor):
-    """Electricity Price Euro Sensor specific implementation."""
-
     def __init__(self, coordinator):
-        super().__init__(coordinator, "Electricity Price Euro", "mdi:currency-eur")
+        super().__init__(coordinator, "Electricity Price Euro", "mdi:currency-eur", "", f"{CURRENCY_CENT}/{UnitOfEnergy.KILO_WATT_HOUR}", SensorDeviceClass.MONETARY)
 
     async def async_update(self):
         """Get the latest data and update the state."""
         await super().async_update()
-        self._attr_native_value = round(50 / 100, 2)
-        self._attr_extra_state_attributes["traffic_light"] = 'test'
+        traffic_data = await self.coordinator.fetch_traffic_data()
+        self._attr_native_value = round(traffic_data["currentEnergyprice"]/100, 2)
+        self._attr_extra_state_attributes["traffic_light"] = traffic_data["color"]
 
-class ColdWaterBathMeterSensor(MeterSensor):
+class ElectricityMeterSensor(EnergyMeterSensor):
+    def __init__(self, coordinator):
+        super().__init__(coordinator, "Electricity consumption", "mdi:meter-electric-outline", "Verbrauch Strom")
+
+class ColdWaterBathMeterSensor(WaterMeterSensor):
     """Cold Water Bath Meter Sensor specific implementation."""
 
     def __init__(self, coordinator):
-        super().__init__(coordinator, "Verbrauch Kaltwasser Bad", "mdi:faucet")
+        super().__init__(coordinator, "Cold water bath consumption", "mdi:faucet", "Verbrauch Kaltwasser Bad")
 
-
-class ColdWaterKitchenMeterSensor(MeterSensor):
+class ColdWaterKitchenMeterSensor(WaterMeterSensor):
     """Cold Water Kitchen Meter Sensor specific implementation."""
 
     def __init__(self, coordinator):
-        super().__init__(coordinator, "Verbrauch Kaltwasser Küche", "mdi:countertop-outline")
+        super().__init__(coordinator, "Cold water kitchen consumption", "mdi:countertop-outline", "Verbrauch Kaltwasser Küche")
 
-
-class ColdWaterWashMeterSensor(MeterSensor):
+class ColdWaterWashMeterSensor(WaterMeterSensor):
     """Cold Water Wash Meter Sensor specific implementation."""
 
     def __init__(self, coordinator):
-        super().__init__(coordinator, "Verbrauch Kaltwasser Waschmaschine", "mdi:washing-machine")
+        super().__init__(coordinator, "Washing machine water consumption", "mdi:washing-machine", "Verbrauch Kaltwasser Waschmaschine")
 
-
-class ElectricityMeterSensor(MeterSensor):
-    """Electricity Meter Sensor specific implementation."""
-
-    def __init__(self, coordinator):
-        super().__init__(coordinator, "Verbrauch Strom", "mdi:meter-electric-outline")
-
-
-class WarmWaterBathMeterSensor(MeterSensor):
+class WarmWaterBathMeterSensor(WaterMeterSensor):
     """Warm Water Bath Meter Sensor specific implementation."""
 
     def __init__(self, coordinator):
-        super().__init__(coordinator, "Verbrauch Warmwasser Bad", "mdi:shower-head")
+        super().__init__(coordinator, "Warm water bath consumption", "mdi:shower-head", "Verbrauch Warmwasser Bad")
 
-
-class WarmWaterKitchenMeterSensor(MeterSensor):
+class WarmWaterKitchenMeterSensor(WaterMeterSensor):
     """Warm Water Kitchen Meter Sensor specific implementation."""
 
     def __init__(self, coordinator):
-        super().__init__(coordinator, "Verbrauch Warmwasser Küche", "mdi:countertop")
+        super().__init__(coordinator, "Warm water kitchen consumption", "mdi:countertop", "Verbrauch Warmwasser Küche")

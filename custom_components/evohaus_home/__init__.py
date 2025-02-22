@@ -21,7 +21,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
 
     try:
         await coordinator.async_login()
-        await coordinator.async_get_residence()
         await coordinator.async_refresh()
 
         if not coordinator.last_update_success:
@@ -32,9 +31,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     # Store the coordinator so platforms can access it
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
-    hass.async_create_task(
-        hass.config_entries.async_forward_entry_setup(entry, "sensor")
-    )
+    await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
 
     return True
 
