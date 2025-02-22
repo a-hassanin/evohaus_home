@@ -3,6 +3,7 @@ from datetime import timedelta
 import async_timeout
 import logging
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import dt as dt_util
 from bs4 import BeautifulSoup
 import json
@@ -19,9 +20,9 @@ class EvohausDataUpdateCoordinator(DataUpdateCoordinator):
         """Initialize."""
         self._username = username
         self._password = password
+        self._residenceId = username.split("_")[0]
         self._cookie = None
         self._domain = "https://ems003.enocoo.com:48889/"
-        self.residenceId = None
         self.cache = TTLCache(maxsize=1, ttl=THROTTLE_INTERVAL_SECONDS)
         self.hass = hass
 
@@ -37,7 +38,7 @@ class EvohausDataUpdateCoordinator(DataUpdateCoordinator):
         try:
             async with async_timeout.timeout(10):
                 await self.async_login()
-                await self.async_get_residence()
+                await self.fetch_traffic_data()
                 return await self.fetch_meter_data()
         except Exception as error:
             raise UpdateFailed(f"Error fetching data: {error}")
@@ -47,7 +48,7 @@ class EvohausDataUpdateCoordinator(DataUpdateCoordinator):
         try:
             payload = {"user": self._username, "passwort": self._password}
             url = self._domain + "signinForm.php?mode=ok"
-            async with self.hass.helpers.aiohttp_client.async_get_clientsession() as session:
+            async with async_get_clientsession(self.hass) as session:
                 async with session.get(url) as response:
                     self._cookie = {"PHPSESSID": response.cookies.get("PHPSESSID")}
                 async with session.post(url, data=payload, cookies=self._cookie):
@@ -57,18 +58,11 @@ class EvohausDataUpdateCoordinator(DataUpdateCoordinator):
         except Exception as error:
             raise Exception(f"Error logging in: {error}")
 
-    async def async_get_residence(self):
-        """Fetch the residence from Evohaus."""
-        try:
-            url = self._domain + "/php/ownConsumption.php"
-            async with self.hass.helpers.aiohttp_client.async_get_clientsession() as session:
-                async with session.get(url, cookies=self._cookie) as response:
-                    content = BeautifulSoup(await response.text(), "html.parser")
-                    self.residenceId = content.find("label", {"for": "residence"}).parent.find("a", {"class": "pdm"})["id"]
-            if not self.residenceId:
-                raise Exception("Cannot fetch residence data")
-        except Exception as error:
-            raise Exception(f"Error fetching residence: {error}")
+    async def fetch_traffic_data(self):
+        url = self._domain + "/php/getTrafficLightStatus.php"
+
+        async with async_get_clientsession(self.hass).get(url, cookies=self._cookie) as response:
+            return json.loads(await response.text())
 
     async def fetch_meter_data(self):
         """Fetch the meter data."""
@@ -76,5 +70,21 @@ class EvohausDataUpdateCoordinator(DataUpdateCoordinator):
         now = dt_util.now()  # current date and time
         today = now.strftime("%Y-%m-%d")
         payload = {"dateParam": today}
-        async with self.hass.helpers.aiohttp_client.async_get_clientsession().post(url, data=payload, cookies=self._cookie) as response:
+        async with async_get_clientsession(self.hass).post(url, data=payload, cookies=self._cookie) as response:
             return BeautifulSoup(await response.text(), "html.parser")
+
+    async def fetch_chart_data(self, dataType):
+        """Parse data."""
+        now = dt_util.now()  # current date and time
+        today = now.strftime("%Y-%m-%d")
+        url = (
+                self._domain
+                + "php/getMeterDataWithParam.php?from="
+                + today
+                + "&intVal=Tag&mClass="
+                + dataType
+                + "&AreaId="
+                + self._residenceId
+        )
+        async with async_get_clientsession(self.hass).get(url, cookies=self._cookie) as response:
+            return json.loads(await response.text())
