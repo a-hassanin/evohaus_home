@@ -48,11 +48,13 @@ class EvohausDataUpdateCoordinator(DataUpdateCoordinator):
         try:
             payload = {"user": self._username, "passwort": self._password}
             url = self._domain + "signinForm.php?mode=ok"
-            async with async_get_clientsession(self.hass) as session:
-                async with session.get(url) as response:
-                    self._cookie = {"PHPSESSID": response.cookies.get("PHPSESSID")}
-                async with session.post(url, data=payload, cookies=self._cookie):
-                    pass
+
+            session = async_get_clientsession(self.hass)
+            async with session.get(url) as response:
+                self._cookie = {"PHPSESSID": response.cookies.get("PHPSESSID")}
+            async with session.post(url, data=payload, cookies=self._cookie):
+                pass
+
             if self._cookie is None:
                 raise Exception("Cannot login to Evohaus")
         except Exception as error:
@@ -60,8 +62,8 @@ class EvohausDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def fetch_traffic_data(self):
         url = self._domain + "/php/getTrafficLightStatus.php"
-
-        async with async_get_clientsession(self.hass).get(url, cookies=self._cookie) as response:
+        session = async_get_clientsession(self.hass)
+        async with session.get(url, cookies=self._cookie) as response:
             return json.loads(await response.text())
 
     async def fetch_meter_data(self):
@@ -70,7 +72,8 @@ class EvohausDataUpdateCoordinator(DataUpdateCoordinator):
         now = dt_util.now()  # current date and time
         today = now.strftime("%Y-%m-%d")
         payload = {"dateParam": today}
-        async with async_get_clientsession(self.hass).post(url, data=payload, cookies=self._cookie) as response:
+        session = async_get_clientsession(self.hass)
+        async with session.post(url, data=payload, cookies=self._cookie) as response:
             return BeautifulSoup(await response.text(), "html.parser")
 
     async def fetch_chart_data(self, dataType):
@@ -86,5 +89,6 @@ class EvohausDataUpdateCoordinator(DataUpdateCoordinator):
                 + "&AreaId="
                 + self._residenceId
         )
-        async with async_get_clientsession(self.hass).get(url, cookies=self._cookie) as response:
+        session = async_get_clientsession(self.hass)
+        async with session.get(url, cookies=self._cookie) as response:
             return json.loads(await response.text())
