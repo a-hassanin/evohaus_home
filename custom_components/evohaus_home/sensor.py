@@ -45,6 +45,7 @@ class EvoSensor(CoordinatorEntity, SensorEntity):
         self._attr_state_class = state_class
         self._attr_native_value = None
         self._attr_extra_state_attributes = {}
+        self.entity_id = f"sensor.{name.lower().replace(' ', '_') + '_' + coordinator.residenceId.lower()}"
 
     @property
     def native_value(self):
