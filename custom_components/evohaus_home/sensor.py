@@ -1,6 +1,7 @@
 """Platform for sensor integration."""
 import homeassistant
 from homeassistant.components.sensor import SensorEntity, SensorStateClass, SensorDeviceClass
+from homeassistant.core import callback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 from homeassistant.helpers.entity import DeviceInfo
 
@@ -78,18 +79,21 @@ class EvoSensor(CoordinatorEntity, SensorEntity):
             manufacturer="Evohaus",
         )
 
+    @callback
+    def _handle_coordinator_update(self):
+        self.async_write_ha_state()
+
 class MeterSensor(EvoSensor):
     def __init__(self, coordinator, name, icon, tech_name, unit, device_class):
         super().__init__(coordinator, name, icon, tech_name, unit, device_class, SensorStateClass.TOTAL_INCREASING)
 
-    async def async_update(self):
-        """Get the latest data and update the state."""
-        await super().async_update()
-        meter_data = await self.coordinator.fetch_meter_data()
-        meter_data_extracted = self.extract_meter_data(meter_data, self._attr_tech_name)
-
-        self._attr_native_value = meter_data_extracted['state']
-        self._attr_extra_state_attributes["meter_no"] = meter_data_extracted['meter_no']
+    @callback
+    def _handle_coordinator_update(self):
+        meter_data_extracted = self.extract_meter_data(self.coordinator.data["meter"], self._attr_tech_name)
+        if self._attr_native_value is None or meter_data_extracted["state"] > self._attr_native_value:
+          self._attr_native_value = meter_data_extracted["state"]
+          self._attr_extra_state_attributes["meter_no"] = meter_data_extracted['meter_no']
+          super()._handle_coordinator_update()
 
     def extract_meter_data(self, meterData, meterType):
         rows = meterData.find_all("tr")
@@ -117,37 +121,29 @@ class WaterMeterSensor(MeterSensor):
     def __init__(self, coordinator, name, icon, tech_name):
         super().__init__(coordinator, name, icon, tech_name, UnitOfVolume.CUBIC_METERS, SensorDeviceClass.WATER)
 
-    async def async_update(self):
-        await super().async_update()
-
 class EnergyMeterSensor(MeterSensor):
     def __init__(self, coordinator, name, icon, tech_name):
         super().__init__(coordinator, name, icon, tech_name, UnitOfEnergy.KILO_WATT_HOUR, SensorDeviceClass.ENERGY)
-
-    async def async_update(self):
-        await super().async_update()
 
 class ElectricityPriceSensor(EvoSensor):
     def __init__(self, coordinator):
         super().__init__(coordinator, "Electricity Price", "mdi:currency-eur", "", f"{CURRENCY_CENT}/{UnitOfEnergy.KILO_WATT_HOUR}", SensorDeviceClass.MONETARY)
 
-    async def async_update(self):
-        """Get the latest data and update the state."""
-        await super().async_update()
-        traffic_data = await self.coordinator.fetch_traffic_data()
-        self._attr_native_value = round(traffic_data["currentEnergyprice"], 2)
-        self._attr_extra_state_attributes["traffic_light"] = traffic_data["color"]
+    @callback
+    def _handle_coordinator_update(self):
+        self._attr_native_value = round(self.coordinator.data['traffic']["currentEnergyprice"], 2)
+        self._attr_extra_state_attributes["traffic_light"] = self.coordinator.data["traffic"]["color"]
+        super()._handle_coordinator_update()
 
 class ElectricityPriceEuroSensor(EvoSensor):
     def __init__(self, coordinator):
         super().__init__(coordinator, "Electricity Price Euro", "mdi:currency-eur", "", f"{CURRENCY_CENT}/{UnitOfEnergy.KILO_WATT_HOUR}", SensorDeviceClass.MONETARY)
 
-    async def async_update(self):
-        """Get the latest data and update the state."""
-        await super().async_update()
-        traffic_data = await self.coordinator.fetch_traffic_data()
-        self._attr_native_value = round(traffic_data["currentEnergyprice"]/100, 2)
-        self._attr_extra_state_attributes["traffic_light"] = traffic_data["color"]
+    @callback
+    def _handle_coordinator_update(self):
+        self._attr_native_value = round(self.coordinator.data['traffic']["currentEnergyprice"] / 100, 2)
+        self._attr_extra_state_attributes["traffic_light"] = self.coordinator.data["traffic"]["color"]
+        super()._handle_coordinator_update()
 
 class ElectricityMeterSensor(EnergyMeterSensor):
     def __init__(self, coordinator):
