@@ -96,7 +96,8 @@ class MeterSensor(EvoSensor):
         if state is not None and int(state) > 0 and (self._attr_native_value is None or state > self._attr_native_value):
           self._attr_native_value = state
           self._attr_extra_state_attributes["meter_no"] = meter_data_extracted['meter_no']
-          super()._handle_coordinator_update()
+          
+        super()._handle_coordinator_update()
 
     def extract_meter_data(self, meterData, meterType):
         rows = meterData.find_all("tr")
@@ -191,3 +192,4 @@ class WarmWaterKitchenMeterSensor(WaterMeterSensor):
 
     def __init__(self, coordinator):
         super().__init__(coordinator, "Warm water kitchen consumption", "mdi:countertop", "Verbrauch Warmwasser Küche")
+
