@@ -109,6 +109,9 @@ class MeterSensor(EvoSensor):
                 continue
 
             unit = cols[0].contents[0]
+            if "Stpl" in unit:
+                continue
+                
             description = cols[1].contents[0].replace(" " + unit, "")
             if description == meterType:
                 row["state"] = float(
@@ -192,4 +195,5 @@ class WarmWaterKitchenMeterSensor(WaterMeterSensor):
 
     def __init__(self, coordinator):
         super().__init__(coordinator, "Warm water kitchen consumption", "mdi:countertop", "Verbrauch Warmwasser Küche")
+
 
