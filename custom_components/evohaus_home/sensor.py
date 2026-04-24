@@ -212,7 +212,7 @@ class ElectricityPriceSensor(EvoSensor):
 
     @callback
     def _handle_coordinator_update(self):
-        traffic = self.coordinator.data.get("traffic")
+        traffic = self.coordinator.data.get("traffic") or {}
         raw_value_price = traffic.get("currentEnergyprice")
         traffic_color = traffic.get("color")
 
@@ -227,7 +227,7 @@ class ElectricityPriceEuroSensor(EvoSensor):
 
     @callback
     def _handle_coordinator_update(self):
-        traffic = self.coordinator.data.get("traffic")
+        traffic = self.coordinator.data.get("traffic") or {}
         raw_value_price = traffic.get("currentEnergyprice")
         traffic_color = traffic.get("color")
 
